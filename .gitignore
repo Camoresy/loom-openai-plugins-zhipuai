@@ -1,0 +1,27 @@
+# Python
+__pycache__
+*.pyc
+*.egg-info
+dist
+.venv
+
+# Log
+*.log
+*.log.*
+*.json
+
+# Editor
+.idea
+*.swp
+.vscode
+.pytest_cache
+.cache
+
+# Build
+build
+
+**/*/__pycache__
+**/.ipynb_checkpoints
+
+.ipynb_checkpoints
+/poetry.lock

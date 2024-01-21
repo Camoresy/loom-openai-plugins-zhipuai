@@ -1,0 +1,5 @@
+zhipuai>=2.0.1
+uvicorn>=0.25.0
+sse-starlette>=1.8.2
+fastapi>=0.108
+starlette>=0.32.0.post1
