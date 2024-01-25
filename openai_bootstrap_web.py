@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Optional, Any, Dict
 
 from fastapi import (APIRouter,
@@ -137,8 +138,11 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
         pass
 
     async def create_chat_completion(self, request: Request, chat_request: ChatCompletionRequest):
-        authorization = request.headers.get("Authorization")
-        authorization = authorization.split("Bearer ")[-1]
+        if os.environ["API_KEY"] is None:
+            authorization = request.headers.get("Authorization")
+            authorization = authorization.split("Bearer ")[-1]
+        else:
+            authorization = os.environ["API_KEY"]
         client = ZhipuAI(api_key=authorization)
         if chat_request.stream:
             generator = create_stream_chat_completion(client, chat_request)
@@ -163,6 +167,7 @@ def run(
 ):
     logging.config.dictConfig(logging_conf)  # type: ignore
     try:
+        os.environ["API_KEY"] = cfg.get("api_key", None)
 
         api = RESTFulOpenAIBootstrapBaseWeb.from_config(cfg=cfg.get("run_openai_api", {}))
         api.set_app_event(started_event=started_event)

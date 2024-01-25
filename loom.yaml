@@ -26,6 +26,7 @@ plugins:
   - loom-openai-plugins-zhipuai:
       name: "loom-openai-plugins-zhipuai"
       logdir: "/media/gpt4-pdf-chatbot-langchain/loom-openai-plugins-zhipuai/logs"
+      api_key: "d4fa0690b6dfa205204cae2e12aa6fb6.1Zl6OXmkRANQZH2R"
       run_openai_api:
         host: "127.0.0.1"
         port: 20000
