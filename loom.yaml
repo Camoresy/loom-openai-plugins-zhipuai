@@ -11,12 +11,12 @@ publish_server:
 
 subscribe_server:
   host: "127.0.0.1"
-  port: 8002
+  port: 8005
 
 openai_plugins_folder:
   - "/media/gpt4-pdf-chatbot-langchain/"
-openai_plugins_load_folder:
-  - "/media/gpt4-pdf-chatbot-langchain/loom-openai-plugins-zhipuai"
+openai_plugins:
+  - "loom-openai-plugins-zhipuai"
 
 
 plugins:
@@ -29,4 +29,4 @@ plugins:
       api_key: "d4fa0690b6dfa205204cae2e12aa6fb6.1Zl6OXmkRANQZH2R"
       run_openai_api:
         host: "127.0.0.1"
-        port: 20000
+        port: 30000
