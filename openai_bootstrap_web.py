@@ -15,7 +15,7 @@ import json
 import pprint
 
 from loom_core.openai_plugins.callback.bootstrap.openai_protocol import ChatCompletionRequest, EmbeddingsRequest, \
-    ChatCompletionResponse, ModelList, EmbeddingsResponse, ChatCompletionStreamResponse
+    ChatCompletionResponse, ModelList, EmbeddingsResponse, ChatCompletionStreamResponse, FunctionAvailable
 from uvicorn import Config, Server
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
@@ -40,10 +40,16 @@ async def create_stream_chat_completion(client: ZhipuAI, chat_request: ChatCompl
     try:
         # 将JSON字符串转换为字典
         data_dict = json.loads(jsonify(chat_request))
+        tools = data_dict.get("tools", None)
+        functions = data_dict.get("functions", None)
+
+        if functions is not None:
+
+            tools = [json.loads(jsonify(FunctionAvailable(type='function', function=f))) for f in functions]
         response = client.chat.completions.create(
             model=chat_request.model,
             messages=data_dict["messages"],
-            tools=data_dict.get("tools", None),
+            tools=tools,
             temperature=chat_request.temperature,
             max_tokens=chat_request.max_tokens,
             top_p=chat_request.top_p,
@@ -138,6 +144,7 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
         pass
 
     async def create_chat_completion(self, request: Request, chat_request: ChatCompletionRequest):
+        logger.info(f"Received chat completion request: {pprint.pformat(chat_request.dict())}")
         if os.environ["API_KEY"] is None:
             authorization = request.headers.get("Authorization")
             authorization = authorization.split("Bearer ")[-1]
@@ -149,16 +156,35 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
             return EventSourceResponse(generator, media_type="text/event-stream")
         else:
             data_dict = json.loads(jsonify(chat_request))
+            tools = data_dict.get("tools", None)
+            functions = data_dict.get("functions", None)
+
+            if functions is not None:
+
+                tools = [json.loads(jsonify(FunctionAvailable(type='function', function=f))) for f in functions]
+
             response = client.chat.completions.create(
                 model=chat_request.model,
                 messages=data_dict["messages"],
-                tools=data_dict.get("tools", None),
+                tools=tools,
                 temperature=chat_request.temperature,
                 max_tokens=chat_request.max_tokens,
                 top_p=chat_request.top_p,
                 stream=chat_request.stream,
             )
-            return ChatCompletionResponse(**dictify(response))
+
+
+            chat_response = ChatCompletionResponse(**dictify(response))
+            function_call = data_dict.get("function_call", None)
+            if function_call is not None:
+                for res in chat_response.choices:
+                    # 筛序res.message.tool_calls中type是 function的第一个数据
+                    function = next(filter(lambda x: x.type == "function", res.message.tool_calls), None)
+                    if function is not None:
+                        res.message.function_call = function.function
+
+            return chat_response
+
 
 
 def run(
