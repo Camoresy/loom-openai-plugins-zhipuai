@@ -50,6 +50,9 @@ class ZhipuAIApplicationAdapter(ApplicationAdapter):
 
         self.processesInfo = processesInfo
 
+        import signal
+        # 跳过键盘中断，使用xoscar的信号处理
+        signal.signal(signal.SIGINT, lambda *_: None)
         logging_conf = get_config_dict(
             processesInfo.log_level,
             get_log_file(log_path=self._cfg.get("logdir"), sub_dir=f"local_{get_timestamp_ms()}"),
@@ -58,30 +61,37 @@ class ZhipuAIApplicationAdapter(ApplicationAdapter):
         )
         logging.config.dictConfig(logging_conf)  # type: ignore
         zhipuai_process_dict.mp_manager = mp.Manager()
-
         # prevent re-init cuda error.
-        mp.set_start_method(method="spawn", force=True)
 
         self.model_worker_started = zhipuai_process_dict.mp_manager.Event()
+        try:
 
-        process = Process(
-            target=run,
-            name=f"model_worker - zhipuai",
-            kwargs=dict(cfg=self._cfg,
-                        started_event=self.model_worker_started,
-                        logging_conf=logging_conf),
-            daemon=True,
-        )
-        zhipuai_process_dict.processes['zhipuai'] = process
+            process = Process(
+                target=run,
+                name=f"model_worker - zhipuai",
+                kwargs=dict(cfg=self._cfg,
+                            started_event=self.model_worker_started,
+                            logging_conf=logging_conf),
+                daemon=True,
+            )
+            zhipuai_process_dict.processes['zhipuai'] = process
+
+        except Exception as e:
+            logger.error("Failed to init zhipuai", exc_info=True)
+            zhipuai_process_dict.stop()
 
     def start(self):
+        try:
+            for n, p in zhipuai_process_dict.processes.items():
+                p.start()
+                logger.info(f"Starting %s", p)
+                p.name = f"{p.name} ({p.pid})"
 
-        for n, p in zhipuai_process_dict.processes.items():
-            p.start()
-            p.name = f"{p.name} ({p.pid})"
-
-        # 等待 model_worker启动完成
-        self.model_worker_started.wait()
+            # 等待 model_worker启动完成
+            self.model_worker_started.wait()
+        except Exception as e:
+            logger.error("Failed to init zhipuai", exc_info=True)
+            zhipuai_process_dict.stop()
 
     def stop(self):
         zhipuai_process_dict.stop()

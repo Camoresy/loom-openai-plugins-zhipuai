@@ -8,15 +8,16 @@ processes: Dict[str, Process] = {}
 
 
 def stop():
-    for n, process in processes.items():
-        logger.warning("Sending SIGKILL to %s", p)
+    global processes
+    for process in processes.values():
+        logger.warning("Sending SIGKILL to %s", process)
         try:
 
             process.kill()
         except Exception as e:
-            logger.info("Failed to kill process %s", p, exc_info=True)
+            logger.info("Failed to kill process %s", process, exc_info=True)
 
-    for n, p in processes.items():
-        logger.info("Process status: %s", p)
+    for process in processes.items():
+        logger.info("Process status: %s", process)
 
     del processes

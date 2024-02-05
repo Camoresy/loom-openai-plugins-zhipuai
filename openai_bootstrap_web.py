@@ -13,7 +13,7 @@ import logging
 from loom_core.openai_plugins.callback.bootstrap import OpenAIBootstrapBaseWeb
 import json
 import pprint
-
+import tiktoken
 from loom_core.openai_plugins.callback.bootstrap.openai_protocol import ChatCompletionRequest, EmbeddingsRequest, \
     ChatCompletionResponse, ModelList, EmbeddingsResponse, ChatCompletionStreamResponse, FunctionAvailable
 from uvicorn import Config, Server
@@ -36,7 +36,6 @@ class JSONResponse(StarletteJSONResponse):
 
 
 async def create_stream_chat_completion(client: ZhipuAI, chat_request: ChatCompletionRequest):
-
     try:
         # 将JSON字符串转换为字典
         data_dict = json.loads(jsonify(chat_request))
@@ -44,7 +43,6 @@ async def create_stream_chat_completion(client: ZhipuAI, chat_request: ChatCompl
         functions = data_dict.get("functions", None)
 
         if functions is not None:
-
             tools = [json.loads(jsonify(FunctionAvailable(type='function', function=f))) for f in functions]
         response = client.chat.completions.create(
             model=chat_request.model,
@@ -141,7 +139,35 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
         pass
 
     async def create_embeddings(self, request: Request, embeddings_request: EmbeddingsRequest):
-        pass
+        logger.info(f"Received create_embeddings request: {pprint.pformat(embeddings_request.dict())}")
+        if os.environ["API_KEY"] is None:
+            authorization = request.headers.get("Authorization")
+            authorization = authorization.split("Bearer ")[-1]
+        else:
+            authorization = os.environ["API_KEY"]
+        client = ZhipuAI(api_key=authorization)
+        # 判断embeddings_request.input是否为list
+        input = None
+        if isinstance(embeddings_request.input, list):
+            tokens = embeddings_request.input
+            try:
+                encoding = tiktoken.encoding_for_model(embeddings_request.model)
+            except KeyError:
+                logger.warning("Warning: model not found. Using cl100k_base encoding.")
+                model = "cl100k_base"
+                encoding = tiktoken.get_encoding(model)
+            for i, token in enumerate(tokens):
+                text = encoding.decode(token)
+                input += text
+
+        else:
+            input = embeddings_request.input
+
+        response = client.embeddings.create(
+            model=embeddings_request.model,
+            input=input,
+        )
+        return EmbeddingsResponse(**dictify(response))
 
     async def create_chat_completion(self, request: Request, chat_request: ChatCompletionRequest):
         logger.info(f"Received chat completion request: {pprint.pformat(chat_request.dict())}")
@@ -160,7 +186,6 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
             functions = data_dict.get("functions", None)
 
             if functions is not None:
-
                 tools = [json.loads(jsonify(FunctionAvailable(type='function', function=f))) for f in functions]
 
             response = client.chat.completions.create(
@@ -173,18 +198,17 @@ class RESTFulOpenAIBootstrapBaseWeb(OpenAIBootstrapBaseWeb):
                 stream=chat_request.stream,
             )
 
-
             chat_response = ChatCompletionResponse(**dictify(response))
             function_call = data_dict.get("function_call", None)
             if function_call is not None:
                 for res in chat_response.choices:
                     # 筛序res.message.tool_calls中type是 function的第一个数据
-                    function = next(filter(lambda x: x.type == "function", res.message.tool_calls), None)
-                    if function is not None:
-                        res.message.function_call = function.function
+                    if res.message.tool_calls is not None:
+                        function = next(filter(lambda x: x.type == "function", res.message.tool_calls), None)
+                        if function is not None:
+                            res.message.function_call = function.function
 
             return chat_response
-
 
 
 def run(
@@ -195,6 +219,9 @@ def run(
     try:
         os.environ["API_KEY"] = cfg.get("api_key", None)
 
+        import signal
+        # 跳过键盘中断，使用xoscar的信号处理
+        signal.signal(signal.SIGINT, lambda *_: None)
         api = RESTFulOpenAIBootstrapBaseWeb.from_config(cfg=cfg.get("run_openai_api", {}))
         api.set_app_event(started_event=started_event)
         api.serve(logging_conf=logging_conf)
